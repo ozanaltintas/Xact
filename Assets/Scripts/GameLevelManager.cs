@@ -12,6 +12,7 @@ public class GameLevelManager : MonoBehaviour
     public Transform spawnPoint;
     public List<GameObject> levelPrefabs;
     private int currentLevelIndex = 0;
+    private const string LEVEL_KEY = "SavedLevelIndex"; 
 
     [Header("UI Elements")]
     public TMP_Text targetPercentageText;
@@ -34,12 +35,12 @@ public class GameLevelManager : MonoBehaviour
     public ParticleSystem confettiEffect;
     
     [Header("Color Settings")]
-    [Tooltip("İşaretli değilse cisimlerin rengi değişmez, senin ayarladığın gibi kalır.")]
     public bool useColorFeedback = false; 
-    
     public Color farColor = Color.red;    
     public Color closeColor = Color.yellow; 
     public Color perfectColor = Color.green; 
+
+    private float tolerance = 5f; 
 
     private float targetPercentage;
     private int remainingMoves = 3;
@@ -50,15 +51,8 @@ public class GameLevelManager : MonoBehaviour
 
     void Awake()
     {
-        if (Instance == null)
-        {
-            Instance = this;
-        }
-        else
-        {
-            Destroy(gameObject);
-            return;
-        }
+        if (Instance == null) Instance = this;
+        else Destroy(gameObject);
 
         audioSource = gameObject.AddComponent<AudioSource>();
     }
@@ -69,32 +63,40 @@ public class GameLevelManager : MonoBehaviour
         if (levelFailPanel != null) levelFailPanel.SetActive(false);
     }
 
-    public void LoadLevel(int index)
+    // --- LOGLU VERSİYON ---
+    public void ContinueFromSavedLevel()
     {
-        isLevelEnding = false;
+        int savedIndex = PlayerPrefs.GetInt(LEVEL_KEY, 0);
+        Debug.Log($"<color=cyan>KAYIT SİSTEMİ:</color> Hafızadan okunan level index: {savedIndex}");
         
-        if (messageText != null) 
+        if (savedIndex >= levelPrefabs.Count)
         {
-            messageText.text = "";
+            Debug.Log($"<color=orange>KAYIT SİSTEMİ:</color> Oyun bitmiş, başa dönülüyor (Level 0)");
+            savedIndex = 0; 
         }
 
+        LoadLevel(savedIndex);
+    }
+
+    public void LoadLevel(int index)
+    {
+        Debug.Log($"<color=green>LEVEL YÜKLENİYOR:</color> Yüklenen Index: {index}");
+        
+        isLevelEnding = false;
+        currentLevelIndex = index; 
+        
+        if (messageText != null) messageText.text = "";
         if (levelCompletePanel != null) levelCompletePanel.SetActive(false);
         if (levelFailPanel != null) levelFailPanel.SetActive(false);
 
         StopAllCoroutines();
         
         GameObject[] leftovers = GameObject.FindGameObjectsWithTag("Sliceable");
-        foreach (GameObject obj in leftovers)
-        {
-            Destroy(obj);
-        }
+        foreach (GameObject obj in leftovers) Destroy(obj);
 
         GameObject[] debris = GameObject.FindGameObjectsWithTag("Untagged");
-        foreach (GameObject obj in debris)
-        {
-            if (obj.GetComponent<DebrisDrifter>() != null)
-                Destroy(obj);
-        }
+        foreach (GameObject obj in debris) 
+            if (obj.GetComponent<DebrisDrifter>() != null) Destroy(obj);
 
         if (index >= levelPrefabs.Count)
         {
@@ -119,28 +121,24 @@ public class GameLevelManager : MonoBehaviour
         currentShape.tag = "Sliceable";
         currentShapeObj = currentShape; 
 
-        if (useColorFeedback)
-        {
-            UpdateShapeColor(100f, 50f); 
-        }
+        if (useColorFeedback) UpdateShapeColor(100f, 50f); 
 
         LevelSettings settings = currentShape.GetComponent<LevelSettings>();
         if (settings != null)
         {
             targetPercentage = settings.targetPercentage;
             remainingMoves = settings.maxMoves;
+            if (settings.tolerance > 0) tolerance = settings.tolerance;
         }
         else
         {
             targetPercentage = 50f;
             remainingMoves = 3;
+            tolerance = 5f;
         }
 
-        if (levelText != null)
-            levelText.text = $"Level {index + 1}";
-
-        if (targetPercentageText != null)
-            targetPercentageText.text = $"🎯 {targetPercentage:F0}%";
+        if (levelText != null) levelText.text = $"Level {index + 1}";
+        if (targetPercentageText != null) targetPercentageText.text = $"🎯 {targetPercentage:F0}%";
 
         yield return null;
 
@@ -153,24 +151,14 @@ public class GameLevelManager : MonoBehaviour
         }
 
         UpdateUI(100f);
-        
-        if (useColorFeedback)
-        {
-            UpdateShapeColor(100f, targetPercentage);
-        }
+        if (useColorFeedback) UpdateShapeColor(100f, targetPercentage);
     }
 
     public void OnSliceExecuted()
     {
         if (isLevelEnding) return;
-
         remainingMoves--;
-
-        if (sliceSound != null && audioSource != null)
-        {
-            audioSource.PlayOneShot(sliceSound);
-        }
-
+        if (sliceSound != null && audioSource != null) audioSource.PlayOneShot(sliceSound);
         StartCoroutine(CalculateDelayed());
     }
 
@@ -184,7 +172,6 @@ public class GameLevelManager : MonoBehaviour
         yield return null;
         yield return null;
         yield return new WaitForSeconds(0.1f);
-
         yield return StartCoroutine(ProcessSliceResult());
     }
 
@@ -230,19 +217,11 @@ public class GameLevelManager : MonoBehaviour
 
         float currentArea = CalculateTotalArea();
         float percentage = 0f;
-
-        if (initialTotalArea > 0)
-            percentage = (currentArea / initialTotalArea) * 100f;
-
+        if (initialTotalArea > 0) percentage = (currentArea / initialTotalArea) * 100f;
         percentage = Mathf.Clamp(percentage, 0f, 100f);
 
         UpdateUI(percentage);
-        
-        if (useColorFeedback)
-        {
-            UpdateShapeColor(percentage, targetPercentage);
-        }
-
+        if (useColorFeedback) UpdateShapeColor(percentage, targetPercentage);
         CheckResult(percentage);
         yield return null;
     }
@@ -250,19 +229,14 @@ public class GameLevelManager : MonoBehaviour
     void UpdateShapeColor(float current, float target)
     {
         if (currentShapeObj == null) return;
-
         SpriteRenderer sr = currentShapeObj.GetComponent<SpriteRenderer>();
         if (sr == null) return;
-
         float diff = Mathf.Abs(current - target);
 
-        if (diff <= 5f)
-        {
-            sr.color = perfectColor; 
-        }
+        if (diff <= tolerance) sr.color = perfectColor; 
         else if (diff < 25f)
         {
-            float t = 1 - (diff - 5f) / 20f; 
+            float t = 1 - (diff - tolerance) / 20f; 
             sr.color = Color.Lerp(closeColor, perfectColor, t);
         }
         else
@@ -276,82 +250,48 @@ public class GameLevelManager : MonoBehaviour
     {
         float diff = Mathf.Abs(currentPercent - targetPercentage);
 
-        // 1. Durum: Hedef tuttuysa (Hamle bitmese bile KAZANIR)
-        if (diff <= 5f)
-        {
+        if (diff <= tolerance)
             StartCoroutine(LevelSuccessRoutine(currentPercent));
-        }
-        // 2. Durum: Hamle bitti ve hedef tutmadıysa (KAYBEDER)
-        else if (remainingMoves <= 0)
-        {
+        else if (currentPercent < (targetPercentage - tolerance))
             StartCoroutine(LevelFailRoutine(currentPercent));
-        }
-        // 3. Durum: Hamle var ve hedef tutmadı -> Oyuna devam
+        else if (remainingMoves <= 0)
+            StartCoroutine(LevelFailRoutine(currentPercent));
     }
 
     IEnumerator LevelSuccessRoutine(float finalPercent)
     {
         isLevelEnding = true;
 
-        // --- YENİ EKLENEN KISIM: BEKLEME SÜRESİ ---
-        // Kesim bittikten sonra sonucu göstermeden önce 0.5 saniye bekle
+        int nextLevelIndex = currentLevelIndex + 1;
+        PlayerPrefs.SetInt(LEVEL_KEY, nextLevelIndex);
+        PlayerPrefs.Save(); 
+        
+        Debug.Log($"<color=cyan>KAYIT YAPILDI:</color> Yeni kayıt edilen level index: {nextLevelIndex}");
+
         yield return new WaitForSeconds(0.5f); 
-        // ------------------------------------------
 
-        if (messageText != null)
-        {
-            messageText.text = GetSuccessMessage(Mathf.Abs(finalPercent - targetPercentage));
-        }
+        if (messageText != null) messageText.text = GetSuccessMessage(Mathf.Abs(finalPercent - targetPercentage));
+        if (successSound != null && audioSource != null) audioSource.PlayOneShot(successSound);
+        if (confettiEffect != null) confettiEffect.Play();
+        if (levelCompletePanel != null) levelCompletePanel.SetActive(true);
 
-        if (successSound != null && audioSource != null)
-        {
-            audioSource.PlayOneShot(successSound);
-        }
-
-        if (confettiEffect != null)
-        {
-            confettiEffect.Play();
-        }
-
-        if (levelCompletePanel != null)
-        {
-            levelCompletePanel.SetActive(true);
-        }
-
-        // Paneli gösterdikten sonra bir sonraki level için bekleme
         yield return new WaitForSeconds(2f);
 
-        currentLevelIndex++;
-        LoadLevel(currentLevelIndex);
+        LoadLevel(nextLevelIndex);
     }
 
     IEnumerator LevelFailRoutine(float finalPercent)
     {
         isLevelEnding = true;
-
-        // --- YENİ EKLENEN KISIM: BEKLEME SÜRESİ ---
-        // Başarısız olmadan önce de oyuncunun durumu kavraması için bekle
         yield return new WaitForSeconds(0.5f);
-        // ------------------------------------------
-
         if (messageText != null)
         {
             float diff = Mathf.Abs(finalPercent - targetPercentage);
             messageText.text = $"BAŞARISIZ!\n({diff:F1}% fark)";
         }
-
-        if (failSound != null && audioSource != null)
-        {
-            audioSource.PlayOneShot(failSound);
-        }
-
-        if (levelFailPanel != null)
-        {
-            levelFailPanel.SetActive(true);
-        }
-
+        if (failSound != null && audioSource != null) audioSource.PlayOneShot(failSound);
+        if (levelFailPanel != null) levelFailPanel.SetActive(true);
         yield return new WaitForSeconds(2f);
-
         LoadLevel(currentLevelIndex);
     }
 
@@ -364,58 +304,35 @@ public class GameLevelManager : MonoBehaviour
 
     void ShowGameComplete()
     {
-        if (messageText != null)
-        {
-            messageText.text = "OYUNU TAMAMLADIN!\nTEBRİKLER! 🎉";
-        }
-
-        if (confettiEffect != null)
-        {
-            confettiEffect.Play();
-        }
+        if (messageText != null) messageText.text = "OYUNU TAMAMLADIN!\nTEBRİKLER! 🎉";
+        if (confettiEffect != null) confettiEffect.Play();
     }
 
     void UpdateUI(float currentPercent)
     {
-        if (movesText != null)
-        {
-            movesText.text = $"✂️ {remainingMoves}";
-        }
-
-        if (currentPercentageText != null)
-        {
-            currentPercentageText.text = $"{currentPercent:F1}%";
-        }
+        if (movesText != null) movesText.text = $"✂️ {remainingMoves}";
+        if (currentPercentageText != null) currentPercentageText.text = $"{currentPercent:F1}%";
     }
 
     float CalculateTotalArea()
     {
         float total = 0;
-
 #if UNITY_2023_1_OR_NEWER
         PolygonCollider2D[] colliders = FindObjectsByType<PolygonCollider2D>(FindObjectsSortMode.None);
 #else
         PolygonCollider2D[] colliders = FindObjectsOfType<PolygonCollider2D>();
 #endif
-
         foreach (var col in colliders)
-        {
-            if (col.gameObject.CompareTag("Sliceable"))
-            {
-                total += GetArea(col);
-            }
-        }
+            if (col.gameObject.CompareTag("Sliceable")) total += GetArea(col);
         return total;
     }
 
     float GetArea(PolygonCollider2D poly)
     {
         if (poly.points == null || poly.points.Length < 3) return 0;
-
         float area = 0;
         Vector2[] points = poly.points;
         Vector3 scale = poly.transform.lossyScale;
-
         for (int i = 0; i < points.Length; i++)
         {
             Vector2 p1 = Vector2.Scale(points[i], scale);
@@ -425,14 +342,16 @@ public class GameLevelManager : MonoBehaviour
         return Mathf.Abs(area) / 2f;
     }
 
-    public void RestartLevel()
+    public void RestartLevel() => LoadLevel(currentLevelIndex);
+    public void NextLevel() => LoadLevel(currentLevelIndex + 1);
+    
+    // Geliştirici Test Kodu: R'ye basınca kaydı sil
+    void Update()
     {
-        LoadLevel(currentLevelIndex);
-    }
-
-    public void NextLevel()
-    {
-        currentLevelIndex++;
-        LoadLevel(currentLevelIndex);
+        if (Input.GetKeyDown(KeyCode.R))
+        {
+            PlayerPrefs.DeleteAll();
+            Debug.Log("<color=red>KAYITLAR SİLİNDİ!</color>");
+        }
     }
 }

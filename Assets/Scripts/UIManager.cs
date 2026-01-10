@@ -159,9 +159,10 @@ public class UIManager : MonoBehaviour
         Time.timeScale = 1f;
         PlayButtonSound();
         
+        // DÜZELTİLDİ: Artık 0. leveli değil, kayıtlı leveli çağırıyor.
         if (GameLevelManager.Instance != null)
         {
-            GameLevelManager.Instance.LoadLevel(0);
+            GameLevelManager.Instance.ContinueFromSavedLevel();
         }
     }
 
