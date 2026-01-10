@@ -1,9 +1,15 @@
 using UnityEngine;
 
+/// <summary>
+/// Alternatif kesim işlemleri için yardımcı sınıf
+/// SpriteSlicer.cs ile aynı işi yapar, sadece farklı bir yaklaşım
+/// </summary>
 public class SlicerMachine : MonoBehaviour
 {
-    // Bu metod kesilen YENİ parçalara özellik atamak için kullanılır
-    public static void SetupSlicedPiece(GameObject obj)
+    /// <summary>
+    /// Yeni kesilen parçaları ayarlar (ana/atık ayrımı yapar)
+    /// </summary>
+    public static void SetupSlicedPiece(GameObject obj, Vector2 originalCenter)
     {
         // 1. Collider Ekle
         PolygonCollider2D col = obj.GetComponent<PolygonCollider2D>();
@@ -12,44 +18,117 @@ public class SlicerMachine : MonoBehaviour
         // 2. Fizik Ekle
         Rigidbody2D rb = obj.GetComponent<Rigidbody2D>();
         if (rb == null) rb = obj.AddComponent<Rigidbody2D>();
-        
-        rb.gravityScale = 0f; 
+
+        rb.gravityScale = 0f;
         rb.linearDamping = 1f;
         rb.angularDamping = 1f;
 
-        // 3. KRİTİK AYRIM: Bu parça merkezde mi, yoksa kenar süsü mü?
-        // Oyunun merkezi (0,0) kabul edilir.
-        // Eğer bu parça (0,0) noktasını kapsıyorsa ANA GÖVDEDİR.
-        
-        // Bounds (Sınırlar) kontrolü yapıyoruz:
-        bool isMainBody = col.bounds.Contains(Vector3.zero);
-
-        // Alternatif hassas kontrol (Eğer şekil yamuksa):
-        // bool isMainBody = col.OverlapPoint(Vector2.zero);
+        // 3. Ana parça mı yoksa atık mı kontrol et
+        bool isMainBody = IsMainPiece(col, originalCenter);
 
         if (isMainBody)
         {
-            // Bu ana parça. Kesilmeye devam edilebilir ve Puana dahildir.
+            // Ana parça
             obj.tag = "Sliceable";
-            
-            // Eğer yanlışlıkla DebrisDrifter eklendiyse kaldır (Ana parça uçmasın)
+            obj.name = "MainShape";
+
+            // Yanlışlıkla eklenen DebrisDrifter varsa kaldır
             DebrisDrifter drifter = obj.GetComponent<DebrisDrifter>();
             if (drifter != null) Destroy(drifter);
         }
         else
         {
-            // Bu atık parça. Puan hesaplamasına KATILMAMALI.
-            obj.tag = "Untagged"; // Tag'i değiştirdik ki Manager bunu toplamasın!
-            
-            // Atık parça olduğu için ekrandan süzülüp gitsin
+            // Atık parça
+            obj.tag = "Untagged";
+            obj.name = "Debris";
+
+            // Drift efekti ekle
             if (obj.GetComponent<DebrisDrifter>() == null)
-                obj.AddComponent<DebrisDrifter>();
+            {
+                DebrisDrifter drifter = obj.AddComponent<DebrisDrifter>();
+                
+                // Rastgele yön
+                drifter.driftDirection = Random.insideUnitCircle.normalized;
+            }
         }
     }
-    
-    // Köprü Metod
+
+    /// <summary>
+    /// Bir parçanın ana parça olup olmadığını kontrol eder
+    /// </summary>
+    static bool IsMainPiece(PolygonCollider2D col, Vector2 originalCenter)
+    {
+        // Yöntem 1: Bounds kontrolü
+        if (col.bounds.Contains(originalCenter))
+            return true;
+
+        // Yöntem 2: Overlap kontrolü (daha hassas)
+        if (col.OverlapPoint(originalCenter))
+            return true;
+
+        // Yöntem 3: Alan kontrolü (ikisi de merkezi içermiyorsa büyük olanı seç)
+        return false;
+    }
+
+    /// <summary>
+    /// Polygon'un alanını hesaplar
+    /// </summary>
+    public static float CalculateArea(PolygonCollider2D poly)
+    {
+        if (poly.points == null || poly.points.Length < 3)
+            return 0;
+
+        float area = 0;
+        Vector2[] points = poly.points;
+        Vector3 scale = poly.transform.lossyScale;
+
+        for (int i = 0; i < points.Length; i++)
+        {
+            Vector2 p1 = Vector2.Scale(points[i], scale);
+            Vector2 p2 = Vector2.Scale(points[(i + 1) % points.Length], scale);
+            area += (p1.x * p2.y) - (p2.x * p1.y);
+        }
+
+        return Mathf.Abs(area) / 2f;
+    }
+
+    /// <summary>
+    /// İki parçadan hangisinin ana parça olduğunu belirler
+    /// </summary>
+    public static GameObject DetermineMainPiece(GameObject pieceA, GameObject pieceB, Vector2 originalCenter)
+    {
+        PolygonCollider2D colA = pieceA.GetComponent<PolygonCollider2D>();
+        PolygonCollider2D colB = pieceB.GetComponent<PolygonCollider2D>();
+
+        if (colA == null || colB == null)
+            return pieceA;
+
+        // Önce merkez kontrolü
+        bool aContains = colA.OverlapPoint(originalCenter);
+        bool bContains = colB.OverlapPoint(originalCenter);
+
+        if (aContains && !bContains)
+            return pieceA;
+        if (bContains && !aContains)
+            return pieceB;
+
+        // İkisi de içeriyorsa veya hiçbiri içermiyorsa, büyük olanı seç
+        float areaA = CalculateArea(colA);
+        float areaB = CalculateArea(colB);
+
+        return areaA >= areaB ? pieceA : pieceB;
+    }
+
+    /// <summary>
+    /// Köprü metod - SpriteSlicer'ı çağırır
+    /// </summary>
     public static void Slice(Vector2 start, Vector2 end)
     {
-        // SpriteSlicer işlemleri buraya (InputController hallediyor zaten)
+        GameObject[] sliceables = GameObject.FindGameObjectsWithTag("Sliceable");
+        
+        foreach (GameObject obj in sliceables)
+        {
+            SpriteSlicer.Slice(obj, start, end);
+        }
     }
 }

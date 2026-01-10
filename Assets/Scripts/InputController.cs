@@ -2,36 +2,85 @@ using UnityEngine;
 
 public class InputController : MonoBehaviour
 {
+    [Header("Line Rendering")]
     private Vector2 startPos;
     private Vector2 endPos;
     private LineRenderer lineRenderer;
+    public Color lineColor = new Color(1f, 0.2f, 0.2f, 0.8f);
+    public float lineWidth = 0.1f;
+    public Material lineMaterial;
+
+    [Header("Visual Feedback")]
+    public GameObject sliceEffectPrefab;
+    public float minSliceDistance = 0.5f;
+
+    [Header("Audio")]
+    public AudioClip sliceSound;
+    private AudioSource audioSource;
 
     void Start()
     {
         lineRenderer = GetComponent<LineRenderer>();
+        if (lineRenderer == null)
+        {
+            lineRenderer = gameObject.AddComponent<LineRenderer>();
+        }
+        
         lineRenderer.positionCount = 0;
+        lineRenderer.startWidth = lineWidth;
+        lineRenderer.endWidth = lineWidth;
+        lineRenderer.material = lineMaterial ?? new Material(Shader.Find("Sprites/Default"));
+        lineRenderer.startColor = lineColor;
+        lineRenderer.endColor = lineColor;
+        lineRenderer.sortingOrder = 100;
+
+        audioSource = gameObject.AddComponent<AudioSource>();
     }
 
     void Update()
     {
-        if (Input.GetMouseButtonDown(0))
+        HandleInput();
+    }
+
+    void HandleInput()
+    {
+        // Hem mouse hem touch desteği
+        bool isPressed = Input.GetMouseButtonDown(0) || (Input.touchCount > 0 && Input.GetTouch(0).phase == TouchPhase.Began);
+        bool isHeld = Input.GetMouseButton(0) || (Input.touchCount > 0 && (Input.GetTouch(0).phase == TouchPhase.Moved || Input.GetTouch(0).phase == TouchPhase.Stationary));
+        bool isReleased = Input.GetMouseButtonUp(0) || (Input.touchCount > 0 && Input.GetTouch(0).phase == TouchPhase.Ended);
+
+        Vector2 inputPos = Input.touchCount > 0 ? 
+            (Vector2)Input.GetTouch(0).position : 
+            (Vector2)Input.mousePosition;
+
+        if (isPressed)
         {
-            startPos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+            // 2D için Vector3'ü Vector2'ye çeviriyoruz
+            Vector3 worldPos = Camera.main.ScreenToWorldPoint(inputPos);
+            startPos = new Vector2(worldPos.x, worldPos.y);
+            
             lineRenderer.positionCount = 2;
             lineRenderer.SetPosition(0, startPos);
+            lineRenderer.SetPosition(1, startPos);
         }
 
-        if (Input.GetMouseButton(0))
+        if (isHeld && lineRenderer.positionCount > 0)
         {
-            Vector2 currentPos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+            Vector3 worldPos = Camera.main.ScreenToWorldPoint(inputPos);
+            Vector2 currentPos = new Vector2(worldPos.x, worldPos.y);
             lineRenderer.SetPosition(1, currentPos);
         }
 
-        if (Input.GetMouseButtonUp(0))
+        if (isReleased && lineRenderer.positionCount > 0)
         {
-            endPos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+            Vector3 worldPos = Camera.main.ScreenToWorldPoint(inputPos);
+            endPos = new Vector2(worldPos.x, worldPos.y);
             lineRenderer.positionCount = 0;
-            ExecuteSlice();
+
+            if (Vector2.Distance(startPos, endPos) >= minSliceDistance)
+            {
+                ExecuteSlice();
+            }
         }
     }
 
@@ -44,28 +93,35 @@ public class InputController : MonoBehaviour
         {
             PolygonCollider2D col = obj.GetComponent<PolygonCollider2D>();
             
-            // Eğer objenin collider'ı varsa ve bizim çizdiğimiz çizgi collider'a değiyorsa:
-            if (col != null && col.OverlapPoint(startPos) == false && col.OverlapPoint(endPos) == false)
+            if (col != null && DoesLineIntersectCollider(col, startPos, endPos))
             {
-                // NOT: Bu satır projendeki "SpriteSlicer" scriptini kullanır.
-                // Eğer hata alırsan SpriteSlicer.cs dosyanın içeriğini bana atman gerekecek.
-                
-                // SpriteSlicer'ın genelde static bir Slice metodu vardır:
-                // Dönüş değeri olarak yeni parçaları verir veya void döner.
-                // En yaygın kullanım şeklini yazıyorum:
-                
                 try 
                 {
-                    // VARSAYIM: SpriteSlicer.Slice(GameObject, Vector2 start, Vector2 end)
                     SpriteSlicer.Slice(obj, startPos, endPos);
-                    
-                    // Eğer kod buraya kadar hatasız geldiyse kesim başarılıdır
                     sliceHappened = true;
+
+                    // Görsel efekt
+                    if (sliceEffectPrefab != null)
+                    {
+                        Vector2 midPoint = (startPos + endPos) / 2f;
+                        GameObject effect = Instantiate(sliceEffectPrefab, midPoint, Quaternion.identity);
+                        Destroy(effect, 2f);
+                    }
+
+                    // Ses efekti
+                    if (sliceSound != null && audioSource != null)
+                    {
+                        audioSource.PlayOneShot(sliceSound);
+                    }
+
+                    // Haptic feedback (mobil titreşim)
+                    #if UNITY_ANDROID || UNITY_IOS
+                    Handheld.Vibrate();
+                    #endif
                 }
                 catch (System.Exception e)
                 {
                     Debug.LogError("Kesme Hatası: " + e.Message);
-                    Debug.LogError("SpriteSlicer scriptinle benim yazdığım kod uyuşmuyor!");
                 }
             }
         }
@@ -77,5 +133,35 @@ public class InputController : MonoBehaviour
                 GameLevelManager.Instance.OnSliceExecuted();
             }
         }
+    }
+
+    bool DoesLineIntersectCollider(PolygonCollider2D col, Vector2 start, Vector2 end)
+    {
+        Vector2[] worldPoints = new Vector2[col.points.Length];
+        for (int i = 0; i < col.points.Length; i++)
+        {
+            worldPoints[i] = col.transform.TransformPoint(col.points[i]);
+        }
+
+        for (int i = 0; i < worldPoints.Length; i++)
+        {
+            Vector2 p1 = worldPoints[i];
+            Vector2 p2 = worldPoints[(i + 1) % worldPoints.Length];
+            
+            if (LineSegmentsIntersect(start, end, p1, p2))
+                return true;
+        }
+        return false;
+    }
+
+    bool LineSegmentsIntersect(Vector2 p1, Vector2 p2, Vector2 p3, Vector2 p4)
+    {
+        float d = (p2.x - p1.x) * (p4.y - p3.y) - (p2.y - p1.y) * (p4.x - p3.x);
+        if (Mathf.Abs(d) < 0.0001f) return false;
+        
+        float u = ((p3.x - p1.x) * (p4.y - p3.y) - (p3.y - p1.y) * (p4.x - p3.x)) / d;
+        float v = ((p3.x - p1.x) * (p2.y - p1.y) - (p3.y - p1.y) * (p2.x - p1.x)) / d;
+        
+        return (u >= 0 && u <= 1 && v >= 0 && v <= 1);
     }
 }

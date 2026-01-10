@@ -86,7 +86,7 @@ SpriteRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_Sprite: {fileID: 2747690628134850419, guid: a9716c16a44a94eed9b5c90fbf4d9bdd, type: 3}
-  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_Color: {r: 0, g: 0, b: 0, a: 1}
   m_FlipX: 0
   m_FlipY: 0
   m_DrawMode: 0
@@ -168,9 +168,33 @@ PolygonCollider2D:
   m_AutoTiling: 0
   m_Points:
     m_Paths:
-    - - {x: 0, y: 0.5773587}
-      - {x: -0.5, y: -0.28866667}
-      - {x: 0.5, y: -0.28866667}
+    - - {x: 0.3671875, y: -0.26171875}
+      - {x: 0.39453125, y: -0.21484375}
+      - {x: 0.42578125, y: -0.16015625}
+      - {x: 0.484375, y: -0.05859375}
+      - {x: 0.5, y: -0.02734375}
+      - {x: 0.5, y: 0.03125}
+      - {x: 0.484375, y: 0.05859375}
+      - {x: 0.3671875, y: 0.26171875}
+      - {x: 0.265625, y: 0.4375}
+      - {x: 0.25390625, y: 0.4453125}
+      - {x: -0.25390625, y: 0.4453125}
+      - {x: -0.265625, y: 0.4375}
+      - {x: -0.29296875, y: 0.390625}
+      - {x: -0.30859375, y: 0.36328125}
+      - {x: -0.3671875, y: 0.26171875}
+      - {x: -0.39453125, y: 0.21484375}
+      - {x: -0.42578125, y: 0.16015625}
+      - {x: -0.5, y: 0.03125}
+      - {x: -0.5, y: -0.03125}
+      - {x: -0.484375, y: -0.05859375}
+      - {x: -0.41015625, y: -0.1875}
+      - {x: -0.265625, y: -0.4375}
+      - {x: -0.25390625, y: -0.4453125}
+      - {x: 0.25390625, y: -0.4453125}
+      - {x: 0.265625, y: -0.4375}
+      - {x: 0.29296875, y: -0.390625}
+      - {x: 0.30859375, y: -0.36328125}
   m_UseDelaunayMesh: 1
 --- !u!114 &145495567083692023
 MonoBehaviour:
@@ -187,6 +211,7 @@ MonoBehaviour:
   targetPercentage: 45
   tolerance: 5
   maxMoves: 3
+  difficulty: 1
 --- !u!114 &5433519762187057749
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -201,7 +226,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ShapeMovement
   rotate: 1
   rotationSpeed: 30
+  randomizeRotationDirection: 0
   move: 0
+  movementType: 0
   moveSpeed: 2
   moveRange: 3
   moveVertical: 0
+  useCustomPath: 0
+  pathPoints: []

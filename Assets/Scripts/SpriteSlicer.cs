@@ -6,14 +6,18 @@ public class SpriteSlicer
     public static void Slice(GameObject target, Vector2 lineStart, Vector2 lineEnd)
     {
         PolygonCollider2D collider = target.GetComponent<PolygonCollider2D>();
-        if (collider == null) return;
+        if (collider == null)
+        {
+            Debug.LogWarning("PolygonCollider2D bulunamadı: " + target.name);
+            return;
+        }
 
         Vector2 originalCenter = target.transform.position;
 
         Vector2[] worldPoints = new Vector2[collider.points.Length];
         for (int i = 0; i < collider.points.Length; i++)
         {
-            worldPoints[i] = target.transform.TransformPoint(collider.points[i]);
+            worldPoints[i] = collider.transform.TransformPoint(collider.points[i]);
         }
 
         List<Vector2> partA_World = new List<Vector2>();
@@ -27,8 +31,10 @@ public class SpriteSlicer
             bool isP1Right = IsRightOfLine(lineStart, lineEnd, p1);
             bool isP2Right = IsRightOfLine(lineStart, lineEnd, p2);
 
-            if (isP1Right) partA_World.Add(p1);
-            else partB_World.Add(p1);
+            if (isP1Right)
+                partA_World.Add(p1);
+            else
+                partB_World.Add(p1);
 
             if (isP1Right != isP2Right)
             {
@@ -49,30 +55,75 @@ public class SpriteSlicer
             GameObject mainPiece = null;
             GameObject debrisPiece = null;
 
-            if (IsPointInPolygon(originalCenter, partA_World))
+            bool aContainsCenter = IsPointInPolygon(originalCenter, partA_World);
+            bool bContainsCenter = IsPointInPolygon(originalCenter, partB_World);
+
+            if (aContainsCenter && !bContainsCenter)
             {
                 mainPiece = pieceA;
                 debrisPiece = pieceB;
             }
-            else
+            else if (bContainsCenter && !aContainsCenter)
             {
                 mainPiece = pieceB;
                 debrisPiece = pieceA;
             }
+            else
+            {
+                float areaA = CalculatePolygonArea(partA_World);
+                float areaB = CalculatePolygonArea(partB_World);
+                
+                if (areaA >= areaB)
+                {
+                    mainPiece = pieceA;
+                    debrisPiece = pieceB;
+                }
+                else
+                {
+                    mainPiece = pieceB;
+                    debrisPiece = pieceA;
+                }
+            }
 
-            mainPiece.tag = "Sliceable"; 
+            mainPiece.tag = "Sliceable";
             mainPiece.name = "MainShape";
+            
+            ShapeMovement oldMovement = target.GetComponent<ShapeMovement>();
+            if (oldMovement != null)
+            {
+                ShapeMovement newMovement = mainPiece.AddComponent<ShapeMovement>();
+                newMovement.rotate = oldMovement.rotate;
+                newMovement.rotationSpeed = oldMovement.rotationSpeed;
+                newMovement.move = oldMovement.move;
+                newMovement.moveSpeed = oldMovement.moveSpeed;
+                newMovement.moveRange = oldMovement.moveRange;
+                newMovement.moveVertical = oldMovement.moveVertical;
+            }
 
-            debrisPiece.tag = "Untagged"; 
+            debrisPiece.tag = "Untagged";
             debrisPiece.name = "Debris";
-            
+
             DebrisDrifter drifter = debrisPiece.AddComponent<DebrisDrifter>();
+
+            Renderer mainRenderer = mainPiece.GetComponent<Renderer>();
+            Renderer debrisRenderer = debrisPiece.GetComponent<Renderer>();
             
-            Vector3 mainCenter = mainPiece.GetComponent<Renderer>().bounds.center;
-            Vector3 debrisCenter = debrisPiece.GetComponent<Renderer>().bounds.center;
-            drifter.driftDirection = (debrisCenter - mainCenter).normalized;
+            if (mainRenderer != null && debrisRenderer != null)
+            {
+                Vector3 mainCenter = mainRenderer.bounds.center;
+                Vector3 debrisCenter = debrisRenderer.bounds.center;
+                drifter.driftDirection = (debrisCenter - mainCenter).normalized;
+            }
+            else
+            {
+                drifter.driftDirection = Random.insideUnitCircle.normalized;
+            }
 
             Object.Destroy(target);
+        }
+        else
+        {
+            Debug.LogWarning("Kesim başarısız: Yetersiz nokta sayısı (A:" + partA_World.Count + " B:" + partB_World.Count + ")");
         }
     }
 
@@ -91,28 +142,43 @@ public class SpriteSlicer
 
         PolygonCollider2D poly = piece.AddComponent<PolygonCollider2D>();
         poly.points = localPoints;
-        
+
         Rigidbody2D rb = piece.AddComponent<Rigidbody2D>();
-        rb.gravityScale = 0; 
+        rb.gravityScale = 0;
         rb.linearDamping = 1f;
+        rb.angularDamping = 1f;
 
         MeshFilter meshFilter = piece.AddComponent<MeshFilter>();
         MeshRenderer meshRenderer = piece.AddComponent<MeshRenderer>();
-        
+
         MeshRenderer originalRenderer = original.GetComponent<MeshRenderer>();
-        if(originalRenderer) 
-            meshRenderer.material = originalRenderer.material;
-        else 
+        if (originalRenderer != null)
+        {
+            meshRenderer.material = new Material(originalRenderer.material);
+        }
+        else
         {
             meshRenderer.material = new Material(Shader.Find("Sprites/Default"));
             SpriteRenderer sr = original.GetComponent<SpriteRenderer>();
-            if(sr) meshRenderer.material.color = sr.color;
+            if (sr != null) meshRenderer.material.color = sr.color;
         }
 
         Mesh mesh = poly.CreateMesh(false, false);
         meshFilter.mesh = mesh;
 
         return piece;
+    }
+
+    static float CalculatePolygonArea(List<Vector2> points)
+    {
+        float area = 0;
+        for (int i = 0; i < points.Count; i++)
+        {
+            Vector2 p1 = points[i];
+            Vector2 p2 = points[(i + 1) % points.Count];
+            area += (p1.x * p2.y) - (p2.x * p1.y);
+        }
+        return Mathf.Abs(area) / 2f;
     }
 
     static bool IsPointInPolygon(Vector2 point, List<Vector2> polygon)

@@ -1,6 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro; // TextMeshPro kullanıyorsun
+using TMPro;
 using System.Collections;
 using System.Collections.Generic;
 
@@ -10,93 +10,170 @@ public class GameLevelManager : MonoBehaviour
 
     [Header("Level Settings")]
     public Transform spawnPoint;
-    public List<GameObject> levelPrefabs; 
+    public List<GameObject> levelPrefabs;
     private int currentLevelIndex = 0;
 
     [Header("UI Elements")]
     public TMP_Text targetPercentageText;
     public TMP_Text currentPercentageText;
     public TMP_Text movesText;
-    public TMP_Text messageText; 
+    public TMP_Text messageText;
+    public TMP_Text levelText;
+
+    [Header("UI Panels")]
+    public GameObject levelCompletePanel;
+    public GameObject levelFailPanel;
+
+    [Header("Audio")]
+    public AudioClip successSound;
+    public AudioClip failSound;
+    public AudioClip sliceSound;
+    private AudioSource audioSource;
+
+    [Header("Visual Effects")]
+    public ParticleSystem confettiEffect;
+    
+    [Header("Color Settings")]
+    [Tooltip("İşaretli değilse cisimlerin rengi değişmez, senin ayarladığın gibi kalır.")]
+    public bool useColorFeedback = false; 
+    
+    public Color farColor = Color.red;    
+    public Color closeColor = Color.yellow; 
+    public Color perfectColor = Color.green; 
 
     private float targetPercentage;
     private int remainingMoves = 3;
     private float initialTotalArea;
     private bool isLevelEnding = false;
+    private GameObject currentShape;
+    private GameObject currentShapeObj; 
 
     void Awake()
     {
-        Instance = this;
+        if (Instance == null)
+        {
+            Instance = this;
+        }
+        else
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        audioSource = gameObject.AddComponent<AudioSource>();
     }
 
     void Start()
     {
-        LoadLevel(currentLevelIndex);
+        if (levelCompletePanel != null) levelCompletePanel.SetActive(false);
+        if (levelFailPanel != null) levelFailPanel.SetActive(false);
     }
 
     public void LoadLevel(int index)
     {
         isLevelEnding = false;
-        if(messageText != null) messageText.text = ""; 
+        
+        if (messageText != null) 
+        {
+            messageText.text = "";
+        }
 
-        // 1. Temizlik
-        StopAllCoroutines(); // Eski hesaplamalar varsa durdur
+        if (levelCompletePanel != null) levelCompletePanel.SetActive(false);
+        if (levelFailPanel != null) levelFailPanel.SetActive(false);
+
+        StopAllCoroutines();
+        
         GameObject[] leftovers = GameObject.FindGameObjectsWithTag("Sliceable");
         foreach (GameObject obj in leftovers)
         {
             Destroy(obj);
         }
 
+        GameObject[] debris = GameObject.FindGameObjectsWithTag("Untagged");
+        foreach (GameObject obj in debris)
+        {
+            if (obj.GetComponent<DebrisDrifter>() != null)
+                Destroy(obj);
+        }
+
         if (index >= levelPrefabs.Count)
         {
-            if(messageText != null) messageText.text = "OYUN BİTTİ! TEBRİKLER!";
+            ShowGameComplete();
             return;
         }
 
-        // 2. Yeni Cismi Yarat (Biraz bekleyip alanı hesapla)
         StartCoroutine(SpawnAndCalculate(index));
     }
 
-    // Cismin yaratılmasını ve ilk alan hesabını garantiye alan coroutine
     IEnumerator SpawnAndCalculate(int index)
     {
-        // Eski objelerin yok olması için bir kare bekle
-        yield return null; 
+        yield return null;
 
-        GameObject newShape = Instantiate(levelPrefabs[index], spawnPoint.position, Quaternion.identity);
-        
-        LevelSettings settings = newShape.GetComponent<LevelSettings>();
+        if (spawnPoint == null)
+        {
+            Debug.LogError("Spawn Point atanmamış!");
+            yield break;
+        }
+
+        currentShape = Instantiate(levelPrefabs[index], spawnPoint.position, Quaternion.identity);
+        currentShape.tag = "Sliceable";
+        currentShapeObj = currentShape; 
+
+        if (useColorFeedback)
+        {
+            UpdateShapeColor(100f, 50f); 
+        }
+
+        LevelSettings settings = currentShape.GetComponent<LevelSettings>();
         if (settings != null)
         {
             targetPercentage = settings.targetPercentage;
-            if(targetPercentageText != null) targetPercentageText.text = "Target: %" + targetPercentage.ToString("F1");
+            remainingMoves = settings.maxMoves;
         }
         else
         {
             targetPercentage = 50f;
-            if(targetPercentageText != null) targetPercentageText.text = "Target: %50.0";
+            remainingMoves = 3;
         }
 
-        // Fizik motorunun objeyi oturtması için bir kare daha bekle
+        if (levelText != null)
+            levelText.text = $"Level {index + 1}";
+
+        if (targetPercentageText != null)
+            targetPercentageText.text = $"🎯 {targetPercentage:F0}%";
+
         yield return null;
 
         initialTotalArea = CalculateTotalArea();
-        remainingMoves = 3;
+        
+        if (initialTotalArea <= 0)
+        {
+            Debug.LogError("Başlangıç alanı hesaplanamadı!");
+            yield break;
+        }
+
         UpdateUI(100f);
+        
+        if (useColorFeedback)
+        {
+            UpdateShapeColor(100f, targetPercentage);
+        }
     }
 
-    // InputController'dan çağrılan metod
     public void OnSliceExecuted()
     {
         if (isLevelEnding) return;
 
         remainingMoves--;
-        
-        // HESAPLAMAYI HEMEN YAPMA! Bir sonraki kareye bırak.
+
+        if (sliceSound != null && audioSource != null)
+        {
+            audioSource.PlayOneShot(sliceSound);
+        }
+
         StartCoroutine(CalculateDelayed());
     }
 
-    // Köprü metod
     public void OnCutFinished()
     {
         OnSliceExecuted();
@@ -104,93 +181,225 @@ public class GameLevelManager : MonoBehaviour
 
     IEnumerator CalculateDelayed()
     {
-        // Unity'nin 'Destroy' edilen objeleri sahneden silmesi için bekle
-        yield return null; 
-        yield return null; // Garanti olsun diye 2 kare bekliyoruz (Physics update cycle)
+        yield return null;
+        yield return null;
+        yield return new WaitForSeconds(0.1f);
+
+        yield return StartCoroutine(ProcessSliceResult());
+    }
+
+    IEnumerator ProcessSliceResult()
+    {
+        GameObject[] pieces = GameObject.FindGameObjectsWithTag("Sliceable");
+        
+        if (pieces.Length > 0)
+        {
+            GameObject biggestPiece = null;
+            float maxArea = -1f;
+
+            foreach (GameObject obj in pieces)
+            {
+                PolygonCollider2D col = obj.GetComponent<PolygonCollider2D>();
+                if (col != null)
+                {
+                    float area = GetArea(col);
+                    if (area > maxArea)
+                    {
+                        maxArea = area;
+                        biggestPiece = obj;
+                    }
+                }
+            }
+
+            foreach (GameObject obj in pieces)
+            {
+                if (obj == biggestPiece)
+                {
+                    DebrisDrifter drifter = obj.GetComponent<DebrisDrifter>();
+                    if (drifter != null) Destroy(drifter);
+                    currentShapeObj = obj;
+                }
+                else
+                {
+                    obj.tag = "Untagged";
+                    DebrisDrifter drifter = obj.GetComponent<DebrisDrifter>();
+                    if (drifter != null) drifter.enabled = true;
+                }
+            }
+        }
 
         float currentArea = CalculateTotalArea();
         float percentage = 0f;
-        
+
         if (initialTotalArea > 0)
             percentage = (currentArea / initialTotalArea) * 100f;
-        
-        // Yüzde eksi çıkamaz veya saçma bir şekilde artamaz, güvenlik kontrolü:
-        if (percentage > 100f && remainingMoves < 3) 
-        {
-            // Eğer kesmemize rağmen %100'den büyükse, eski parça silinmemiş demektir.
-            // Bu durumda oyuncuya o anki hatalı değeri göstermek yerine max 100 göster.
-            // Ama 2 kare beklediğimiz için buraya düşme ihtimali çok düşük.
-            percentage = 100f; 
-        }
-        
+
+        percentage = Mathf.Clamp(percentage, 0f, 100f);
+
         UpdateUI(percentage);
+        
+        if (useColorFeedback)
+        {
+            UpdateShapeColor(percentage, targetPercentage);
+        }
+
         CheckResult(percentage);
+        yield return null;
+    }
+
+    void UpdateShapeColor(float current, float target)
+    {
+        if (currentShapeObj == null) return;
+
+        SpriteRenderer sr = currentShapeObj.GetComponent<SpriteRenderer>();
+        if (sr == null) return;
+
+        float diff = Mathf.Abs(current - target);
+
+        if (diff <= 5f)
+        {
+            sr.color = perfectColor; 
+        }
+        else if (diff < 25f)
+        {
+            float t = 1 - (diff - 5f) / 20f; 
+            sr.color = Color.Lerp(closeColor, perfectColor, t);
+        }
+        else
+        {
+            float t = 1 - (diff - 25f) / 50f;
+            sr.color = Color.Lerp(farColor, closeColor, Mathf.Clamp01(t));
+        }
     }
 
     void CheckResult(float currentPercent)
     {
         float diff = Mathf.Abs(currentPercent - targetPercentage);
 
+        // 1. Durum: Hedef tuttuysa (Hamle bitmese bile KAZANIR)
         if (diff <= 5f)
         {
-            StartCoroutine(LevelSuccessRoutine());
+            StartCoroutine(LevelSuccessRoutine(currentPercent));
         }
+        // 2. Durum: Hamle bitti ve hedef tutmadıysa (KAYBEDER)
         else if (remainingMoves <= 0)
         {
-            StartCoroutine(LevelFailRoutine());
+            StartCoroutine(LevelFailRoutine(currentPercent));
         }
+        // 3. Durum: Hamle var ve hedef tutmadı -> Oyuna devam
     }
 
-    IEnumerator LevelSuccessRoutine()
+    IEnumerator LevelSuccessRoutine(float finalPercent)
     {
         isLevelEnding = true;
-        if(messageText != null) 
+
+        // --- YENİ EKLENEN KISIM: BEKLEME SÜRESİ ---
+        // Kesim bittikten sonra sonucu göstermeden önce 0.5 saniye bekle
+        yield return new WaitForSeconds(0.5f); 
+        // ------------------------------------------
+
+        if (messageText != null)
         {
-            messageText.text = "MÜKEMMEL!";
-            messageText.color = Color.green;
+            messageText.text = GetSuccessMessage(Mathf.Abs(finalPercent - targetPercentage));
         }
 
-        yield return new WaitForSeconds(1.5f);
+        if (successSound != null && audioSource != null)
+        {
+            audioSource.PlayOneShot(successSound);
+        }
+
+        if (confettiEffect != null)
+        {
+            confettiEffect.Play();
+        }
+
+        if (levelCompletePanel != null)
+        {
+            levelCompletePanel.SetActive(true);
+        }
+
+        // Paneli gösterdikten sonra bir sonraki level için bekleme
+        yield return new WaitForSeconds(2f);
 
         currentLevelIndex++;
         LoadLevel(currentLevelIndex);
     }
 
-    IEnumerator LevelFailRoutine()
+    IEnumerator LevelFailRoutine(float finalPercent)
     {
         isLevelEnding = true;
-        if(messageText != null)
+
+        // --- YENİ EKLENEN KISIM: BEKLEME SÜRESİ ---
+        // Başarısız olmadan önce de oyuncunun durumu kavraması için bekle
+        yield return new WaitForSeconds(0.5f);
+        // ------------------------------------------
+
+        if (messageText != null)
         {
-            messageText.text = "BAŞARISIZ!";
-            messageText.color = Color.red;
+            float diff = Mathf.Abs(finalPercent - targetPercentage);
+            messageText.text = $"BAŞARISIZ!\n({diff:F1}% fark)";
         }
 
-        yield return new WaitForSeconds(1.5f);
+        if (failSound != null && audioSource != null)
+        {
+            audioSource.PlayOneShot(failSound);
+        }
+
+        if (levelFailPanel != null)
+        {
+            levelFailPanel.SetActive(true);
+        }
+
+        yield return new WaitForSeconds(2f);
 
         LoadLevel(currentLevelIndex);
     }
 
+    string GetSuccessMessage(float diff)
+    {
+        if (diff <= 1f) return "MÜKEMMEL! 🌟";
+        if (diff <= 3f) return "HARİKA! ⭐";
+        return "BAŞARILI! ✓";
+    }
+
+    void ShowGameComplete()
+    {
+        if (messageText != null)
+        {
+            messageText.text = "OYUNU TAMAMLADIN!\nTEBRİKLER! 🎉";
+        }
+
+        if (confettiEffect != null)
+        {
+            confettiEffect.Play();
+        }
+    }
+
     void UpdateUI(float currentPercent)
     {
-        if(movesText != null) movesText.text = "Moves: " + remainingMoves;
-        if(currentPercentageText != null) currentPercentageText.text = "Current: %" + currentPercent.ToString("F1");
+        if (movesText != null)
+        {
+            movesText.text = $"✂️ {remainingMoves}";
+        }
+
+        if (currentPercentageText != null)
+        {
+            currentPercentageText.text = $"{currentPercent:F1}%";
+        }
     }
 
     float CalculateTotalArea()
     {
         float total = 0;
-        
-        #if UNITY_2023_1_OR_NEWER
+
+#if UNITY_2023_1_OR_NEWER
         PolygonCollider2D[] colliders = FindObjectsByType<PolygonCollider2D>(FindObjectsSortMode.None);
-        #else
+#else
         PolygonCollider2D[] colliders = FindObjectsOfType<PolygonCollider2D>();
-        #endif
+#endif
 
         foreach (var col in colliders)
         {
-            // Sadece 'Sliceable' olanları topla. 
-            // SlicerMachine.cs scriptindeki mantık sayesinde atık parçalar 'Untagged' oluyor,
-            // bu yüzden burada toplanmıyorlar.
             if (col.gameObject.CompareTag("Sliceable"))
             {
                 total += GetArea(col);
@@ -201,11 +410,11 @@ public class GameLevelManager : MonoBehaviour
 
     float GetArea(PolygonCollider2D poly)
     {
-        if(poly.points == null || poly.points.Length < 3) return 0;
+        if (poly.points == null || poly.points.Length < 3) return 0;
 
         float area = 0;
         Vector2[] points = poly.points;
-        Vector3 scale = poly.transform.lossyScale; 
+        Vector3 scale = poly.transform.lossyScale;
 
         for (int i = 0; i < points.Length; i++)
         {
@@ -214,5 +423,16 @@ public class GameLevelManager : MonoBehaviour
             area += (p1.x * p2.y) - (p2.x * p1.y);
         }
         return Mathf.Abs(area) / 2f;
+    }
+
+    public void RestartLevel()
+    {
+        LoadLevel(currentLevelIndex);
+    }
+
+    public void NextLevel()
+    {
+        currentLevelIndex++;
+        LoadLevel(currentLevelIndex);
     }
 }
