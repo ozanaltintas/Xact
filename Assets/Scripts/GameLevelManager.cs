@@ -63,7 +63,7 @@ public class GameLevelManager : MonoBehaviour
         if (levelFailPanel != null) levelFailPanel.SetActive(false);
     }
 
-    // --- LOGLU VERSİYON ---
+    // --- KAYITLI LEVELDEN BAŞLATMA FONKSİYONU ---
     public void ContinueFromSavedLevel()
     {
         int savedIndex = PlayerPrefs.GetInt(LEVEL_KEY, 0);
@@ -91,6 +91,7 @@ public class GameLevelManager : MonoBehaviour
 
         StopAllCoroutines();
         
+        // Önceki kalıntıları temizle
         GameObject[] leftovers = GameObject.FindGameObjectsWithTag("Sliceable");
         foreach (GameObject obj in leftovers) Destroy(obj);
 
@@ -175,8 +176,10 @@ public class GameLevelManager : MonoBehaviour
         yield return StartCoroutine(ProcessSliceResult());
     }
 
+    // --- KRİTİK BÖLÜM: BÜYÜK PARÇAYI SEÇME MANTIĞI ---
     IEnumerator ProcessSliceResult()
     {
+        // 1. Sahnedeki tüm kesilebilir parçaları bul
         GameObject[] pieces = GameObject.FindGameObjectsWithTag("Sliceable");
         
         if (pieces.Length > 0)
@@ -184,12 +187,14 @@ public class GameLevelManager : MonoBehaviour
             GameObject biggestPiece = null;
             float maxArea = -1f;
 
+            // 2. Döngü: Tüm parçaların alanını hesapla ve en büyüğünü bul
             foreach (GameObject obj in pieces)
             {
                 PolygonCollider2D col = obj.GetComponent<PolygonCollider2D>();
                 if (col != null)
                 {
                     float area = GetArea(col);
+                    // Eğer bu parçanın alanı şu ana kadar bulduğumuzdan büyükse, yeni kral bu olur
                     if (area > maxArea)
                     {
                         maxArea = area;
@@ -198,19 +203,22 @@ public class GameLevelManager : MonoBehaviour
                 }
             }
 
+            // 3. Döngü: Parçaları yönet
             foreach (GameObject obj in pieces)
             {
                 if (obj == biggestPiece)
                 {
+                    // EN BÜYÜK PARÇA: Sahnede kalır, sürüklenmesi durdurulur
                     DebrisDrifter drifter = obj.GetComponent<DebrisDrifter>();
-                    if (drifter != null) Destroy(drifter);
+                    if (drifter != null) Destroy(drifter); // Drifter varsa sil, sabit dursun
                     currentShapeObj = obj;
                 }
                 else
                 {
+                    // KÜÇÜK PARÇALAR: Etiketi kaldır ve sürüklenmesini sağla (Çöp olur)
                     obj.tag = "Untagged";
                     DebrisDrifter drifter = obj.GetComponent<DebrisDrifter>();
-                    if (drifter != null) drifter.enabled = true;
+                    if (drifter != null) drifter.enabled = true; // Uçup gitsin
                 }
             }
         }
