@@ -14,6 +14,7 @@ GameObject:
   - component: {fileID: 7542046278881296044}
   - component: {fileID: 7284646328239323964}
   - component: {fileID: -4774378548948452100}
+  - component: {fileID: -1659898720627830090}
   m_Layer: 0
   m_Name: Cow
   m_TagString: Sliceable
@@ -429,3 +430,19 @@ MonoBehaviour:
   moveVertical: 0
   useCustomPath: 0
   pathPoints: []
+--- !u!114 &-1659898720627830090
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3889797505424596684}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 27613a76f9a915044bba4b076239e2c0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LevelSettings
+  targetPercentage: 50
+  tolerance: 5
+  maxMoves: 3
+  difficulty: 1

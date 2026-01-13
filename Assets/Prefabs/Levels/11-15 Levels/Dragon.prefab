@@ -13,9 +13,11 @@ GameObject:
   - component: {fileID: 5354757170320354745}
   - component: {fileID: 2482429639626178516}
   - component: {fileID: -429917390208205138}
+  - component: {fileID: 566475297093352784}
+  - component: {fileID: 8241803546403276901}
   m_Layer: 0
   m_Name: Dragon
-  m_TagString: Untagged
+  m_TagString: Sliceable
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -605,3 +607,41 @@ MonoBehaviour:
   jitterSpeed: 2
   minMultiplier: 0.8
   maxMultiplier: 2.5
+--- !u!114 &566475297093352784
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8392445849120638778}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 27613a76f9a915044bba4b076239e2c0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LevelSettings
+  targetPercentage: 50
+  tolerance: 5
+  maxMoves: 3
+  difficulty: 0
+--- !u!114 &8241803546403276901
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8392445849120638778}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 73b522dcf61f8eb4fa4512dc7bf239dc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ShapeMovement
+  rotate: 0
+  rotationSpeed: 50
+  randomizeRotationDirection: 0
+  move: 0
+  movementType: 0
+  moveSpeed: 2
+  moveRange: 3
+  moveVertical: 0
+  useCustomPath: 0
+  pathPoints: []

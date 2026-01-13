@@ -14,6 +14,7 @@ public class UIManager : MonoBehaviour
     public GameObject settingsPanel;
     public GameObject levelCompletePanel;
     public GameObject levelFailPanel;
+    public GameObject levelPickPanel; // YENİ EKLENDİ
 
     [Header("Buttons")]
     public Button playButton;
@@ -22,6 +23,8 @@ public class UIManager : MonoBehaviour
     public Button restartButton;
     public Button settingsButton;
     public Button homeButton;
+    public Button pickLevelButton;     // YENİ EKLENDİ (Menüdeki buton)
+    public Button levelPickBackButton; // YENİ EKLENDİ (Paneldeki geri butonu)
 
     [Header("Settings UI")]
     public Slider musicVolumeSlider;
@@ -79,6 +82,13 @@ public class UIManager : MonoBehaviour
         
         if (sfxVolumeSlider != null)
             sfxVolumeSlider.onValueChanged.AddListener(SetSFXVolume);
+
+        // --- YENİ EKLENEN BUTON BAĞLANTILARI ---
+        if (pickLevelButton != null)
+            pickLevelButton.onClick.AddListener(ShowLevelPick);
+
+        if (levelPickBackButton != null)
+            levelPickBackButton.onClick.AddListener(HideLevelPick);
     }
 
     void LoadSettings()
@@ -143,6 +153,28 @@ public class UIManager : MonoBehaviour
         }
     }
 
+    // --- YENİ FONKSİYONLAR ---
+    public void ShowLevelPick()
+    {
+        HideAllPanels(); // Diğer her şeyi kapat
+        if (levelPickPanel != null)
+        {
+            levelPickPanel.SetActive(true); // Sadece bunu aç
+            PlayButtonSound();
+        }
+    }
+
+    public void HideLevelPick()
+    {
+        if (levelPickPanel != null)
+        {
+            levelPickPanel.SetActive(false);
+        }
+        ShowMainMenu(); // Geri basınca ana menüye dön
+        PlayButtonSound();
+    }
+    // -------------------------
+
     void HideAllPanels()
     {
         if (mainMenuPanel != null) mainMenuPanel.SetActive(false);
@@ -151,6 +183,7 @@ public class UIManager : MonoBehaviour
         if (settingsPanel != null) settingsPanel.SetActive(false);
         if (levelCompletePanel != null) levelCompletePanel.SetActive(false);
         if (levelFailPanel != null) levelFailPanel.SetActive(false);
+        if (levelPickPanel != null) levelPickPanel.SetActive(false); // Bunu da listeye ekledik
     }
 
     public void StartGame()
@@ -159,7 +192,6 @@ public class UIManager : MonoBehaviour
         Time.timeScale = 1f;
         PlayButtonSound();
         
-        // DÜZELTİLDİ: Artık 0. leveli değil, kayıtlı leveli çağırıyor.
         if (GameLevelManager.Instance != null)
         {
             GameLevelManager.Instance.ContinueFromSavedLevel();

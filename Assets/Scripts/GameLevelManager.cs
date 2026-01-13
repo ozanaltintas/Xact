@@ -47,7 +47,9 @@ public class GameLevelManager : MonoBehaviour
     private float initialTotalArea;
     private bool isLevelEnding = false;
     private GameObject currentShape;
-    private GameObject currentShapeObj; 
+    private GameObject currentShapeObj;
+    
+    private bool currentLevelHasJitter = false; 
 
     void Awake()
     {
@@ -63,15 +65,12 @@ public class GameLevelManager : MonoBehaviour
         if (levelFailPanel != null) levelFailPanel.SetActive(false);
     }
 
-    // --- KAYITLI LEVELDEN BAŞLATMA FONKSİYONU ---
     public void ContinueFromSavedLevel()
     {
         int savedIndex = PlayerPrefs.GetInt(LEVEL_KEY, 0);
-        Debug.Log($"<color=cyan>KAYIT SİSTEMİ:</color> Hafızadan okunan level index: {savedIndex}");
         
         if (savedIndex >= levelPrefabs.Count)
         {
-            Debug.Log($"<color=orange>KAYIT SİSTEMİ:</color> Oyun bitmiş, başa dönülüyor (Level 0)");
             savedIndex = 0; 
         }
 
@@ -80,8 +79,6 @@ public class GameLevelManager : MonoBehaviour
 
     public void LoadLevel(int index)
     {
-        Debug.Log($"<color=green>LEVEL YÜKLENİYOR:</color> Yüklenen Index: {index}");
-        
         isLevelEnding = false;
         currentLevelIndex = index; 
         
@@ -91,13 +88,14 @@ public class GameLevelManager : MonoBehaviour
 
         StopAllCoroutines();
         
-        // Önceki kalıntıları temizle
         GameObject[] leftovers = GameObject.FindGameObjectsWithTag("Sliceable");
         foreach (GameObject obj in leftovers) Destroy(obj);
 
         GameObject[] debris = GameObject.FindGameObjectsWithTag("Untagged");
         foreach (GameObject obj in debris) 
-            if (obj.GetComponent<DebrisDrifter>() != null) Destroy(obj);
+        {
+             if (obj.GetComponent<Rigidbody2D>() != null) Destroy(obj);
+        }
 
         if (index >= levelPrefabs.Count)
         {
@@ -122,6 +120,8 @@ public class GameLevelManager : MonoBehaviour
         currentShape.tag = "Sliceable";
         currentShapeObj = currentShape; 
 
+        currentLevelHasJitter = currentShape.GetComponent<ObjectJitter>() != null;
+
         if (useColorFeedback) UpdateShapeColor(100f, 50f); 
 
         LevelSettings settings = currentShape.GetComponent<LevelSettings>();
@@ -138,8 +138,10 @@ public class GameLevelManager : MonoBehaviour
             tolerance = 5f;
         }
 
-        if (levelText != null) levelText.text = $"Level {index + 1}";
-        if (targetPercentageText != null) targetPercentageText.text = $"🎯 {targetPercentage:F0}%";
+        if (levelText != null) levelText.text = $"{index + 1}";
+        
+        // --- GÜNCELLEME: Virgülden sonra 1 hane (F1) ---
+        if (targetPercentageText != null) targetPercentageText.text = $"%{targetPercentage:F1}";
 
         yield return null;
 
@@ -170,16 +172,12 @@ public class GameLevelManager : MonoBehaviour
 
     IEnumerator CalculateDelayed()
     {
-        yield return null;
-        yield return null;
         yield return new WaitForSeconds(0.1f);
         yield return StartCoroutine(ProcessSliceResult());
     }
 
-    // --- KRİTİK BÖLÜM: BÜYÜK PARÇAYI SEÇME MANTIĞI ---
     IEnumerator ProcessSliceResult()
     {
-        // 1. Sahnedeki tüm kesilebilir parçaları bul
         GameObject[] pieces = GameObject.FindGameObjectsWithTag("Sliceable");
         
         if (pieces.Length > 0)
@@ -187,14 +185,12 @@ public class GameLevelManager : MonoBehaviour
             GameObject biggestPiece = null;
             float maxArea = -1f;
 
-            // 2. Döngü: Tüm parçaların alanını hesapla ve en büyüğünü bul
             foreach (GameObject obj in pieces)
             {
                 PolygonCollider2D col = obj.GetComponent<PolygonCollider2D>();
                 if (col != null)
                 {
                     float area = GetArea(col);
-                    // Eğer bu parçanın alanı şu ana kadar bulduğumuzdan büyükse, yeni kral bu olur
                     if (area > maxArea)
                     {
                         maxArea = area;
@@ -203,22 +199,55 @@ public class GameLevelManager : MonoBehaviour
                 }
             }
 
-            // 3. Döngü: Parçaları yönet
             foreach (GameObject obj in pieces)
             {
                 if (obj == biggestPiece)
                 {
-                    // EN BÜYÜK PARÇA: Sahnede kalır, sürüklenmesi durdurulur
-                    DebrisDrifter drifter = obj.GetComponent<DebrisDrifter>();
-                    if (drifter != null) Destroy(drifter); // Drifter varsa sil, sabit dursun
+                    // --- BÜYÜK PARÇA ---
+                    Rigidbody2D rb = obj.GetComponent<Rigidbody2D>();
+                    if (rb != null) 
+                    {
+                        rb.isKinematic = true; 
+                        rb.linearVelocity = Vector2.zero;
+                        rb.angularVelocity = 0f;
+                    }
                     currentShapeObj = obj;
+
+                    // --- JITTER ---
+                    if (currentLevelHasJitter)
+                    {
+                        if (obj.GetComponent<ObjectJitter>() == null)
+                        {
+                            ObjectJitter newJitter = obj.AddComponent<ObjectJitter>();
+                            newJitter.jitterAmount = 0.1f; 
+                            newJitter.jitterSpeed = 20f;
+                        }
+                    }
                 }
                 else
                 {
-                    // KÜÇÜK PARÇALAR: Etiketi kaldır ve sürüklenmesini sağla (Çöp olur)
-                    obj.tag = "Untagged";
+                    // --- KÜÇÜK PARÇA (ÇÖP) ---
+                    obj.tag = "Untagged"; 
+
                     DebrisDrifter drifter = obj.GetComponent<DebrisDrifter>();
-                    if (drifter != null) drifter.enabled = true; // Uçup gitsin
+                    if (drifter != null) 
+                    {
+                        drifter.enabled = true;
+                    }
+                    else
+                    {
+                        Rigidbody2D rb = obj.GetComponent<Rigidbody2D>();
+                        if (rb == null) rb = obj.AddComponent<Rigidbody2D>(); 
+                        
+                        rb.isKinematic = false; 
+                        rb.gravityScale = 1f;   
+                        rb.AddTorque(Random.Range(-50f, 50f)); 
+
+                        Collider2D col = obj.GetComponent<Collider2D>();
+                        if (col != null) col.isTrigger = true;
+                        
+                        Destroy(obj, 2f);
+                    }
                 }
             }
         }
@@ -273,8 +302,6 @@ public class GameLevelManager : MonoBehaviour
         int nextLevelIndex = currentLevelIndex + 1;
         PlayerPrefs.SetInt(LEVEL_KEY, nextLevelIndex);
         PlayerPrefs.Save(); 
-        
-        Debug.Log($"<color=cyan>KAYIT YAPILDI:</color> Yeni kayıt edilen level index: {nextLevelIndex}");
 
         yield return new WaitForSeconds(0.5f); 
 
@@ -318,8 +345,10 @@ public class GameLevelManager : MonoBehaviour
 
     void UpdateUI(float currentPercent)
     {
-        if (movesText != null) movesText.text = $"✂️ {remainingMoves}";
-        if (currentPercentageText != null) currentPercentageText.text = $"{currentPercent:F1}%";
+        if (movesText != null) movesText.text = $"{remainingMoves}";
+        
+        // --- GÜNCELLEME: Virgülden sonra 1 hane (F1) ---
+        if (currentPercentageText != null) currentPercentageText.text = $"%{currentPercent:F1}";
     }
 
     float CalculateTotalArea()
@@ -353,7 +382,6 @@ public class GameLevelManager : MonoBehaviour
     public void RestartLevel() => LoadLevel(currentLevelIndex);
     public void NextLevel() => LoadLevel(currentLevelIndex + 1);
     
-    // Geliştirici Test Kodu: R'ye basınca kaydı sil
     void Update()
     {
         if (Input.GetKeyDown(KeyCode.R))
